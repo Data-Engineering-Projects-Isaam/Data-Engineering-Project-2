@@ -1,0 +1,22 @@
+import json
+import boto3
+
+def lambda_handler(event, context):
+    # Initialize the Glue client
+    glue_client = boto3.client('glue')
+
+    # Extract bucket name and file key from the S3 event
+    bucket_name = event['Records'][0]['s3']['bucket']['name']
+    file_key = event['Records'][0]['s3']['object']['key']
+
+    # Log the bucket name and file key
+    print(f"New XML file detected: {file_key} in bucket: {bucket_name}")
+
+    # Trigger the Glue job
+    try:
+        response = glue_client.start_job_run(JobName='your_glue_job_name', Arguments={
+            '--s3_input_path': f's3://{bucket_name}/{file_key}'
+        })
+        print(f"Glue job started successfully: {response['JobRunId']}")
+    except Exception as e:
+        print(f"Error starting Glue job: {str(e)}")
