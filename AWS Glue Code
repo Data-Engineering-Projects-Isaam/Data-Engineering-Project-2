@@ -1,0 +1,46 @@
+import os
+import xmlschema
+import boto3
+import pandas as pd
+from io import StringIO
+import sys
+
+# Function to validate XML against XSD
+def validate_xml(xml_content: str, xsd_content: str) -> bool:
+    schema = xmlschema.XMLSchema(xsd_content)
+    try:
+        schema.validate(xml_content)
+        return True
+    except xmlschema.exceptions.XMLSchemaException as e:
+        print(f"XML validation error: {e}")
+        return False
+
+# AWS S3 bucket and file configuration
+s3_bucket = "your-s3-bucket"
+xsd_file_path = "path/to/your/schema.xsd"
+
+# Load the XSD file from S3
+s3_client = boto3.client('s3')
+xsd_file_content = s3_client.get_object(Bucket=s3_bucket, Key=xsd_file_path)['Body'].read().decode('utf-8')
+
+# Get the input XML file path from Glue job arguments
+input_xml_file = sys.argv[1]
+
+# Read the XML file from S3
+xml_file_content = s3_client.get_object(Bucket=s3_bucket, Key=input_xml_file)['Body'].read().decode('utf-8')
+
+if not validate_xml(xml_file_content, xsd_file_content):
+    print(f"Skipping invalid XML file: {input_xml_file}")
+else:
+    # Read the XML data into a DataFrame
+    xml_data = pd.read_xml(StringIO(xml_file_content))
+
+    # Check for required columns and filter out records where revenue is 0
+    if 'Company_id' in xml_data.columns and 'revenue' in xml_data.columns:
+        filtered_data = xml_data[(xml_data['revenue'] != 0) & (xml_data['Company_id'].notnull())]
+       
+        # Write the processed DataFrame to S3 in Parquet format
+        output_path = f"s3://{s3_bucket}/processed_data/{os.path.basename(input_xml_file)}.parquet"
+        filtered_data.to_parquet(output_path, index=False)
+
+print("Processing completed.")
